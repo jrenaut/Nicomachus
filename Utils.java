@@ -15,7 +15,7 @@ import oracle.sql.BLOB;
 public class Utils {
     public static Connection openConnection() throws SQLException {
         DriverManager.registerDriver(new OracleDriver());
-        return DriverManager.getConnection("jdbc:oracle:thin:@" + "//localhost:1521/epabfm", "D_BFM", "dogland");
+        return DriverManager.getConnection(url, user, password);
     }
 
     public static BLOB createTemporaryBlob(Connection conn) throws SQLException {
