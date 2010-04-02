@@ -11,6 +11,8 @@ public class ContentTypes extends DocxXml {
     private ArrayList          overrides;
     private boolean            hasInsertedDocx = false;
     private boolean            hasInsertedRtf  = false;
+    private boolean            hasInsertedXls  = false;
+    private boolean            hasInsertedDoc  = false;
     public static final String PATH            = "[Content_Types].xml";
 
     public ContentTypes() throws Exception {
@@ -28,6 +30,20 @@ public class ContentTypes extends DocxXml {
         if (!hasInsertedRtf) {
             hasInsertedRtf = true;
             addDefault("rtf", "application/rtf");
+        }
+    }
+
+    public void addInsertedXls() {
+        if (!hasInsertedXls) {
+            hasInsertedXls = true;
+            addDefault("xls", "application/ms-excel");
+        }
+    }
+
+    public void addInsertedDoc() {
+        if (!hasInsertedDoc) {
+            hasInsertedDoc = true;
+            addDefault("doc", "application/msword");
         }
     }
 

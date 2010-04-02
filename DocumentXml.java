@@ -23,7 +23,6 @@ public class DocumentXml extends DocxXml {
         root.setAttribute("xmlns:w10", "urn:schemas-microsoft-com:office:word");
         root.setAttribute("xmlns:w", "http://schemas.openxmlformats.org/wordprocessingml/2006/main");
         root.setAttribute("xmlns:wne", "http://schemas.microsoft.com/office/word/2006/wordml");
-        this.root.appendChild(getBody());
     }
 
     public Element getBody() {
@@ -44,6 +43,7 @@ public class DocumentXml extends DocxXml {
     }
 
     protected Document writeXml() {
+        this.root.appendChild(getBody());
         this.xml.appendChild(this.root);
         return this.xml;
     }

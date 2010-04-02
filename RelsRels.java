@@ -26,10 +26,6 @@ public class RelsRels extends DocxXml {
         this.root = this.xml.createElement("Relationships");
         root.setAttribute("xmlns", "http://schemas.openxmlformats.org/package/2006/relationships");
         addRelationship("word/document.xml", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument");
-        // addRelationship("docProps/app.xml",
-        // "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties");
-        // addRelationship("docProps/core.xml",
-        // "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties");
     }
 
     public Document writeXml() {

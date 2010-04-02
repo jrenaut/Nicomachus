@@ -49,7 +49,7 @@ public class Docx {
             this.tempBlob.truncate(0);
             this.zos = new ZipOutputStream(tempBlob.setBinaryStream(1L));
         } catch (Exception e) {
-            e.printStackTrace();
+            //
         }
     }
 
@@ -59,7 +59,7 @@ public class Docx {
             dbf = DocumentBuilderFactory.newInstance();
             this.zos = new ZipOutputStream(new FileOutputStream(debugFileName));
         } catch (Exception e) {
-            e.printStackTrace();
+            //
         }
     }
 
@@ -69,18 +69,26 @@ public class Docx {
 
     private Element getDocumentBody() {
         try {
+            initDocumentXml();
             return this.document_xml.getBody();
         } catch (Exception e) {
-            e.printStackTrace();
             return null;
         }
     }
 
     public void addInsertedDocument(BLOB b, String filename, String fileType, String fileId) throws Exception {
+        // The fact that docx can't handle a filename with a space in it when
+        // Microsoft was responsible for starting this terrible practice in the
+        // first place brings me both great joy and great exasperation.
+        filename = replace(filename, ' ', '_');
         Connection conn = Utils.openConnection();
         BLOB temp = Utils.createTemporaryBlob(conn);
         Utils.unzipBlobtoBlob("", b, temp);
-        filename = "word/" + filename;
+        if ("doc".equals(fileType)) {
+            filename = "embeddings/" + filename;
+        } else {
+            filename = "word/" + filename;
+        }
         ZipEntry ze = new ZipEntry(filename);
         InputStream inStream = temp.binaryStreamValue();
         int length = -1;
@@ -96,12 +104,87 @@ public class Docx {
         zos.closeEntry();
         initDocumentXmlRels();
         initContentTypes();
-        this.document_xml_rels.addRelationship("/" + filename, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk", fileId);
         if ("docx".equals(fileType)) {
             this.ContentTypes_xml.addInsertedDocx();
         } else if ("rtf".equals(fileType)) {
             this.ContentTypes_xml.addInsertedRtf();
+        } else if ("xls".equals(fileType)) {
+            this.ContentTypes_xml.addInsertedXls();
+        } else if ("doc".equals(fileType)) {
+            throw new Exception("Unsupported filetype: doc");
+            // this.ContentTypes_xml.addInsertedDoc();
+        } else {
+            throw new Exception("Unsupported filetype: " + fileType);
         }
+        if ("doc".equals(fileType)) {
+            this.document_xml_rels.addRelationship("/" + filename, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject", fileId);
+        } else {
+            this.document_xml_rels.addRelationship("/" + filename, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk", fileId);
+        }
+    }
+
+    public void addInsertedUnzippedDocument(BLOB b, String filename, String fileType, String fileId) throws Exception {
+        // The fact that docx can't handle a filename with a space in it when
+        // Microsoft was responsible for starting this terrible practice in the
+        // first place brings me both great joy and great exasperation.
+        filename = replace(filename, ' ', '_');
+        if ("doc".equals(fileType)) {
+            filename = "embeddings/" + filename;
+        } else {
+            filename = "word/" + filename;
+        }
+        ZipEntry ze = new ZipEntry(filename);
+        InputStream inStream = b.binaryStreamValue();
+        int length = -1;
+        int size = b.getBufferSize();
+        ze.setSize(size);
+        zos.putNextEntry(ze);
+        byte[] buffer = new byte[size];
+        while ((length = inStream.read(buffer)) != -1) {
+            zos.write(buffer, 0, length);
+            zos.flush();
+        }
+        inStream.close();
+        zos.closeEntry();
+        initDocumentXmlRels();
+        initContentTypes();
+        if ("docx".equals(fileType)) {
+            this.ContentTypes_xml.addInsertedDocx();
+        } else if ("rtf".equals(fileType)) {
+            this.ContentTypes_xml.addInsertedRtf();
+        } else if ("xls".equals(fileType)) {
+            this.ContentTypes_xml.addInsertedXls();
+        } else if ("doc".equals(fileType)) {
+            throw new Exception("Unsupported filetype: doc");
+            // this.ContentTypes_xml.addInsertedDoc();
+        } else {
+            throw new Exception("Unsupported filetype: " + fileType);
+        }
+        if ("doc".equals(fileType)) {
+            this.document_xml_rels.addRelationship("/" + filename, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject", fileId);
+        } else {
+            this.document_xml_rels.addRelationship("/" + filename, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk", fileId);
+        }
+    }
+
+    /**
+     * Because Oracle's JVM doesn't recognize String.replace
+     * 
+     * @param str
+     * @param oldChar
+     * @param newChar
+     * @return
+     */
+    private String replace(String str, char oldChar, char newChar) {
+        String retval = "";
+        for (int i = 0; i < str.length(); i++) {
+            if (str.charAt(i) == oldChar) {
+                retval += newChar;
+            } else {
+                retval += str.charAt(i);
+            }
+        }
+        return retval;
     }
 
     /** Helper methods to define document objects * */
@@ -120,6 +203,14 @@ public class Docx {
         Element rpr = getDocumentXmlDocument().createElement("w:rPr");
         Element bold = getDocumentXmlDocument().createElement("w:b");
         rpr.appendChild(bold);
+        return rpr;
+    }
+
+    public Element getUnderlineElement() {
+        Element rpr = getDocumentXmlDocument().createElement("w:rPr");
+        Element u = getDocumentXmlDocument().createElement("w:u");
+        u.setAttribute("w:val", "single");
+        rpr.appendChild(u);
         return rpr;
     }
 
@@ -147,12 +238,12 @@ public class Docx {
     public Element getParagraphElement(boolean singleSpace) {
         Element p = getDocumentXmlDocument().createElement("w:p");
         if (singleSpace) {
-            Element ppr = this.document_xml.getDocument().createElement("w:pPr");
-            Element w = this.document_xml.getDocument().createElement("w:spacing");
+            Element ppr = getDocumentXmlDocument().createElement("w:pPr");
+            Element w = getDocumentXmlDocument().createElement("w:spacing");
             w.setAttribute("w:line", "240");
             w.setAttribute("w:lineRule", "auto");
             ppr.appendChild(w);
-            Element wcs = this.document_xml.getDocument().createElement("w:contextualSpacing");
+            Element wcs = getDocumentXmlDocument().createElement("w:contextualSpacing");
             ppr.appendChild(wcs);
             p.appendChild(ppr);
         }
@@ -179,15 +270,60 @@ public class Docx {
     public Element insertDocument(String name) {
         Element p = getParagraphElement(true);
         Element w = getWrapperElement();
-        Element el = this.document_xml.getDocument().createElement("w:t");
+        Element el = getDocumentXmlDocument().createElement("w:t");
         p.setAttribute("xml:space", "preserve");
         el.setAttribute("xml:space", "preserve");
-        Element inserted = this.document_xml.getDocument().createElement("w:altChunk");
+        Element inserted = getDocumentXmlDocument().createElement("w:altChunk");
         inserted.setAttribute("r:id", name);
         el.appendChild(inserted);
         w.appendChild(el);
         p.appendChild(w);
         return p;
+    }
+
+    /**
+     * NOT CURRENTLY WORKING. Who knew it was such a pain to insert a word
+     * document?
+     * 
+     * @param name
+     * @return
+     */
+    public Element insertDocDocument(String name) {
+        Element p = getParagraphElement(true);
+        Element w = getWrapperElement();
+        Element o = getDocumentXmlDocument().createElement("w:object");
+        Element ole = getDocumentXmlDocument().createElement("o:OLEObject");
+        ole.setAttribute("Type", "Embed");
+        ole.setAttribute("ProgID", "Word.Document.8");
+        ole.setAttribute("DrawAspect", "Content");
+        ole.setAttribute("ObjectID", name);
+        o.appendChild(ole);
+        w.appendChild(o);
+        p.appendChild(w);
+        return p;
+    }
+
+    public Element getDotLeaders() {
+        double defaultSize = 6.5;
+        return getDotLeaders("right", "dot", "" + (1440 * defaultSize));
+    }
+
+    public Element getTab() {
+        return getDocumentXmlDocument().createElement("w:tab");
+    }
+
+    public Element getDotLeaders(String alignment, String leader, String position) {
+        Element pPr = getDocumentXmlDocument().createElement("w:pPr");
+        Element tabs = getDocumentXmlDocument().createElement("w:tabs");
+        Element tab = getDocumentXmlDocument().createElement("w:tab");
+        tab.setAttribute("w:val", alignment);
+        if (leader != null) {
+            tab.setAttribute("w:leader", leader);
+        }
+        tab.setAttribute("w:pos", position);
+        tabs.appendChild(tab);
+        pPr.appendChild(tabs);
+        return pPr;
     }
 
     private Document getDocumentXml() throws Exception {
@@ -202,7 +338,6 @@ public class Docx {
                 initDocumentXml();
             return this.document_xml.getDocument();
         } catch (Exception e) {
-            e.printStackTrace();
             return null;
         }
     }
@@ -1354,10 +1489,10 @@ public class Docx {
 
     public static void main(String[] args) {
         try {
-            Docx doc = new Docx("c:\\temp\\mytest.docx");
+            Docx doc = new Docx("c:\\temp\\test.docx");
             Element p = doc.getParagraphElement();
             Element w = doc.getWrapperElement();
-            Element t = doc.getTextElement("This is a test document.");
+            Element t = doc.getTextElement("Hello, world");
             w.appendChild(t);
             p.appendChild(w);
             doc.appendChild(p);
