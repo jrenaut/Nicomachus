@@ -1,12 +1,15 @@
 package docx;
 
+
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.sql.Connection;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.Iterator;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -15,6 +18,7 @@ import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 import oracle.sql.BLOB;
+import oracle.sql.CLOB;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Text;
@@ -32,6 +36,7 @@ public class Docx {
     private Document               app_xml;
     private Document               core_xml;
     private DocumentBuilderFactory dbf              = null;
+   
     // NB - if you set ADD_OPTIONAL_XML to true, you get an invalid docx file.
     // Still working
     // on that. -- JER
@@ -72,6 +77,7 @@ public class Docx {
             initDocumentXml();
             return this.document_xml.getBody();
         } catch (Exception e) {
+            //
             return null;
         }
     }
@@ -163,6 +169,49 @@ public class Docx {
         if ("doc".equals(fileType)) {
             this.document_xml_rels.addRelationship("/" + filename, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject", fileId);
         } else {
+            this.document_xml_rels.addRelationship("/" + filename, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk", fileId);
+        }
+    }
+
+    public void addInsertedUnzippedDocument(CLOB c, String filename, String fileType, String fileId) throws Exception {
+        // The fact that docx can't handle a filename with a space in it when
+        // Microsoft was responsible for starting this terrible practice in the
+        // first place brings me both great joy and great exasperation.
+        filename = replace(filename, ' ', '_');
+        filename = "word/" + filename;
+        ZipEntry ze = new ZipEntry(filename);
+        InputStream inStream = c.binaryStreamValue();
+        int length = -1;
+        int size = c.getBufferSize();
+        ze.setSize(size);
+        zos.putNextEntry(ze);
+        byte[] buffer = new byte[size];
+        while ((length = inStream.read(buffer)) != -1) {
+            zos.write(buffer, 0, length);
+            zos.flush();
+        }
+        inStream.close();
+        zos.closeEntry();
+        initDocumentXmlRels();
+        initContentTypes();
+        if ("docx".equals(fileType)) {
+            this.ContentTypes_xml.addInsertedDocx();
+        } else if ("rtf".equals(fileType)) {
+            this.ContentTypes_xml.addInsertedRtf();
+        } else if ("xls".equals(fileType)) {
+            this.ContentTypes_xml.addInsertedXls();
+        } else if ("doc".equals(fileType)) {
+            throw new Exception("Unsupported filetype: doc");
+            // this.ContentTypes_xml.addInsertedDoc();
+        } else {
+            throw new Exception("Unsupported filetype: " + fileType);
+        }
+        if ("doc".equals(fileType)) {
+            this.document_xml_rels.addRelationship("/" + filename, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject", fileId);
+        } else {
+            // this.document_xml_rels.addSubDocument("/" + filename,
+            // "http://schemas.openxmlformats.org/officeDocument/2006/relationships/subDocument",
+            // fileId);
             this.document_xml_rels.addRelationship("/" + filename, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk", fileId);
         }
     }
@@ -267,6 +316,30 @@ public class Docx {
         return retval;
     }
 
+    public Element getAlignmentElement(String alignment) {
+        Element ppr = getDocumentXmlDocument().createElement("w:pPr");
+        Element align = getDocumentXmlDocument().createElement("w:jc");
+        align.setAttribute("w:val", alignment);
+        ppr.appendChild(align);
+        return ppr;
+    }
+
+    public Element getFontElement(String fontname, int fontsize) {
+        Element rpr = getDocumentXmlDocument().createElement("w:rPr");
+        Element rFonts = getDocumentXmlDocument().createElement("w:rFonts");
+        rFonts.setAttribute("w:ascii", fontname);
+        rFonts.setAttribute("w:hAnsi", fontname);
+        rFonts.setAttribute("w:cs", fontname);
+        rpr.appendChild(rFonts);
+        Element sz = getDocumentXmlDocument().createElement("w:sz");
+        sz.setAttribute("w:val", "" + (2 * fontsize));
+        rpr.appendChild(sz);
+        Element szCs = getDocumentXmlDocument().createElement("w:szCs");
+        szCs.setAttribute("w:val", "" + (2 * fontsize));
+        rpr.appendChild(szCs);
+        return rpr;
+    }
+
     public Element insertDocument(String name) {
         Element p = getParagraphElement(true);
         Element w = getWrapperElement();
@@ -281,14 +354,117 @@ public class Docx {
         return p;
     }
 
-    /**
-     * NOT CURRENTLY WORKING. Who knew it was such a pain to insert a word
-     * document?
-     * 
-     * @param name
-     * @return
-     */
+    public Element insertTable(Table table) {
+        /*
+         * <w:tblPr> <w:tblStyle w:val="TableGrid"/> <w:tblW w:w="6480"
+         * w:type="dxa"/> <w:tblLook w:val="04A0"/> </w:tblPr>
+         */
+        Element t = getDocumentXmlDocument().createElement("w:tbl");
+        Element tblPr = getDocumentXmlDocument().createElement("w:tblPr");
+        Element tblw = getDocumentXmlDocument().createElement("w:tblW");
+        tblw.setAttribute("w:w", "" + table.getWidth());
+        if (table.getWidth() > 0) {
+            tblw.setAttribute("w:type", "dxa");
+        } else {
+            tblw.setAttribute("w:type", "auto");
+        }
+        tblPr.appendChild(tblw);
+        t.appendChild(tblPr);
+        Element tgrid = getDocumentXmlDocument().createElement("w:tblGrid");
+        double[] cols = table.getColumnWidths();
+        if (cols != null) {
+            for (int i = 0; i < cols.length; i++) {
+                Element gridCol = getDocumentXmlDocument().createElement("w:gridCol");
+                gridCol.setAttribute("w:w", "" + cols[i]);
+                tgrid.appendChild(gridCol);
+            }
+        }
+        t.appendChild(tgrid);
+        for (Iterator it = table.getRows().iterator(); it.hasNext();) {
+            Row r = (Row) it.next();
+            t.appendChild(addTableRow(r));
+        }
+        return t;
+    }
+
+    private Element addTableRow(Row r) {
+        Element row = getDocumentXmlDocument().createElement("w:tr");
+        for (Iterator it = r.getCells().iterator(); it.hasNext();) {
+            Cell c = (Cell) it.next();
+            row.appendChild(addTableCell(c));
+        }
+        return row;
+    }
+
+    private Element addTableCell(Cell c) {
+        Element cell = getDocumentXmlDocument().createElement("w:tc");
+        Element tcpr = getDocumentXmlDocument().createElement("w:tcPr");
+        Element shd = getDocumentXmlDocument().createElement("w:shd");
+        shd.setAttribute("w:val", "clear");
+        shd.setAttribute("w:color", "auto");
+        shd.setAttribute("w:fill", convertColorToHexString(c.getBackgroundColor()));
+        tcpr.appendChild(shd);
+        if (c.getWidth() != -1) {
+            Element tcw = getDocumentXmlDocument().createElement("w:tcW");
+            tcw.setAttribute("w:w", "" + c.getWidth());
+            tcw.setAttribute("w:type", "dxa");
+            tcpr.appendChild(tcw);
+        }
+        // else{
+        // Element tcw = getDocumentXmlDocument().createElement("w:tcW");
+        // tcw.setAttribute("w:w", "0");
+        // tcw.setAttribute("w:type", "auto");
+        // tcpr.appendChild(tcw);
+        // }
+        if (c.getRowSpan() > 1) {
+            // TODO Much more complicated, not going to implement now
+        }
+        if (c.getColumnSpan() > 1) {
+            Element wgridspan = getDocumentXmlDocument().createElement("w:gridSpan");
+            wgridspan.setAttribute("w:val", "" + c.getColumnSpan());
+            tcpr.appendChild(wgridspan);
+        }
+        ArrayList borders = c.getBorders();
+        if (borders != null) {
+            Element pBdr = getDocumentXmlDocument().createElement("w:pBdr");
+            for (Iterator it = borders.iterator(); it.hasNext();) {
+                CellBorder cb = (CellBorder) it.next();
+                Element bdr = getDocumentXmlDocument().createElement("w:" + cb.getLocation());
+                bdr.setAttribute("w:val", cb.getType());
+                bdr.setAttribute("w:sz", "" + cb.getSize());
+                bdr.setAttribute("w:color", "auto");
+                pBdr.appendChild(bdr);
+            }
+            tcpr.appendChild(pBdr);
+        }
+        cell.appendChild(tcpr);
+        Element p = getParagraphElement();
+        Element w = getWrapperElement();
+        w.appendChild(getColorElement(c.getFontColor()));
+        p.appendChild(getAlignmentElement(c.getAlignment()));
+        w.appendChild(getFontElement(c.getFontName(), c.getFontSize()));
+        if (c.isBold()) {
+            w.appendChild(getBoldElement());
+        }
+        if (c.isItalic()) {
+            w.appendChild(getItalicElement());
+        }
+        Element t = getTextElement(c.getText());
+        w.appendChild(t);
+        p.appendChild(w);
+        cell.appendChild(p);
+        return cell;
+    }
+
+    public Element insertSubDocument(String name) {
+        Element subdoc = getDocumentXmlDocument().createElement("w:subDoc");
+        subdoc.setAttribute("r:id", name);
+        return subdoc;
+    }
+
     public Element insertDocDocument(String name) {
+        // ShapeID="_x0000_i1025" DrawAspect="Content" ObjectID="_1331581368"
+        // r:id="rId6">
         Element p = getParagraphElement(true);
         Element w = getWrapperElement();
         Element o = getDocumentXmlDocument().createElement("w:object");
@@ -338,6 +514,7 @@ public class Docx {
                 initDocumentXml();
             return this.document_xml.getDocument();
         } catch (Exception e) {
+            //
             return null;
         }
     }
@@ -1428,7 +1605,9 @@ public class Docx {
         if (this.document_xml_rels != null) {
             addEntry(zos, getDocumentXmlRelsXml(), "word/_rels/document.xml.rels");
         }
+        // if (this.styles_xml != null) {
         addEntry(zos, getStylesXml(), "word/styles.xml");
+        // }
         if (this.ADD_OPTIONAL_XML) {
             // NB - this doesn't quite work yet
             addEntry(zos, getFontTableXml(), "word/fontTable.xml");
@@ -1490,12 +1669,6 @@ public class Docx {
     public static void main(String[] args) {
         try {
             Docx doc = new Docx("c:\\temp\\test.docx");
-            Element p = doc.getParagraphElement();
-            Element w = doc.getWrapperElement();
-            Element t = doc.getTextElement("Hello, world");
-            w.appendChild(t);
-            p.appendChild(w);
-            doc.appendChild(p);
             doc.save();
         } catch (Throwable e) {
             e.printStackTrace();

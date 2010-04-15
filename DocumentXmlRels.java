@@ -33,12 +33,22 @@ public class DocumentXmlRels extends DocxXml {
         }
         int counter = 1;
         for (Iterator it = this.relationships.iterator(); it.hasNext();) {
-            Relationship r = (Relationship) it.next();
-            if (r.id.equals("NONE")) {
-                r.id = "rId" + counter;
-                counter++;
+            Object o = it.next();
+            if (o instanceof Relationship) {
+                Relationship r = (Relationship) o;
+                if (r.id.equals("NONE")) {
+                    r.id = "rId" + counter;
+                    counter++;
+                }
+                this.root.appendChild(r.write(this.xml));
+            } else {
+                SubDocument r = (SubDocument) o;
+                if (r.id.equals("NONE")) {
+                    r.id = "rId" + counter;
+                    counter++;
+                }
+                this.root.appendChild(r.write(this.xml));
             }
-            this.root.appendChild(r.write(this.xml));
         }
         this.xml.appendChild(this.root);
         return this.xml;
@@ -57,6 +67,14 @@ public class DocumentXmlRels extends DocxXml {
             this.relationships = new ArrayList();
         }
         Relationship r = new Relationship(target, type);
+        this.relationships.add(r);
+    }
+
+    public void addSubDocument(String target, String type, String id) {
+        if (this.relationships == null) {
+            this.relationships = new ArrayList();
+        }
+        SubDocument r = new SubDocument(target, type, id);
         this.relationships.add(r);
     }
 
@@ -82,13 +100,13 @@ public class DocumentXmlRels extends DocxXml {
     }
 
     private class Relationship {
-        private final String ELEMENT_NAME = "Relationship";
-        private final String ATTR_TARGET  = "Target";
-        private final String ATTR_TYPE    = "Type";
-        private final String ATTR_ID      = "Id";
-        private String       target;
-        private String       type;
-        private String       id           = "NONE";
+        protected final String ELEMENT_NAME = "Relationship";
+        protected final String ATTR_TARGET  = "Target";
+        protected final String ATTR_TYPE    = "Type";
+        protected final String ATTR_ID      = "Id";
+        protected String       target;
+        protected String       type;
+        protected String       id           = "NONE";
 
         public Relationship(String target, String type, String id) {
             this.target = target;
@@ -106,6 +124,23 @@ public class DocumentXmlRels extends DocxXml {
             r.setAttribute(ATTR_TARGET, this.target);
             r.setAttribute(ATTR_TYPE, this.type);
             r.setAttribute(ATTR_ID, this.id);
+            return r;
+        }
+    }
+
+    private class SubDocument extends Relationship {
+        private final String TARGET_MODE = "TargetMode";
+
+        public SubDocument(String target, String type, String id) {
+            super(target, type, id);
+        }
+
+        public Element write(Document doc) {
+            Element r = doc.createElement(ELEMENT_NAME);
+            r.setAttribute(ATTR_TARGET, this.target);
+            r.setAttribute(ATTR_TYPE, this.type);
+            r.setAttribute(ATTR_ID, this.id);
+            r.setAttribute(TARGET_MODE, "External");
             return r;
         }
     }
