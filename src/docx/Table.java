@@ -7,7 +7,9 @@ import java.util.List;
 public class Table {
     private List     rows;
     private double[] columnWidths;
-    private double   width = 0;
+    private double   width     = 0;
+    private boolean  onePage   = true;
+    private double   rowHeight = 0;
 
     public void addRow(Row r) {
         if (rows == null) {
@@ -49,6 +51,22 @@ public class Table {
 
     public double getWidth() {
         return (1440 * this.width);
+    }
+
+    public void setKeepOnOnePage(boolean one) {
+        this.onePage = one;
+    }
+
+    public boolean keepOnOnePage() {
+        return this.onePage;
+    }
+
+    public void setRowHeight(double inches) {
+        this.rowHeight = inches;
+    }
+
+    public double getRowHeight() {
+        return this.rowHeight;
     }
 
     public static void main(String[] args) {
