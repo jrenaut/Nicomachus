@@ -1,3 +1,6 @@
 Nicomachus (http://en.wikipedia.org/wiki/Nicomachus_%28scribe%29) is a simple Java package for writing docx files.  This was adapted from code written for the Department of Treasury Budget Formulation and Execution Manager.  We needed to manipulate docx files using Java running inside an Oracle 10g JVM.  That means Java 1.4.  Most of the open source docx manipulation libraries in Java require 1.5.
 
+classes12.jar is required, and is available free from Oracle:
+http://www.oracle.com/technology/software/tech/java/sqlj_jdbc/htdocs/jdbc_10201.html
+
 This is a work in progress, and contributions are welcome.
